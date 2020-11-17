@@ -7,7 +7,13 @@
 //LiquidCrystal_I2C lcd(0x38);  // Set the LCD I2C address
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE); 
 //LiquidCrystal_I2C lcd(0x38, BACKLIGHT_PIN, POSITIVE);  // Set the LCD I2C address
+enum DisplayMode{
+  setMode,
+  readMode,
+  sleepMode
+};
 
+DisplayMode displayMode = readMode;
 const int LOWER_TEMP_BUTTON = 13;
 const int RAISE_TEMP_BUTTON = 11;
 const int FAN_PWM_PIN = 10;
@@ -21,6 +27,7 @@ char status;
 
 int lowerT = 0;
 int raiseT = 0;
+int wakeButtonT = 0;
 
 int screenTimer = SCREEN_SLEEP;
 double fanSpeed = 255;
@@ -36,6 +43,7 @@ PID myPID(&sensedTemperature, &fanSpeed, &setTemperature,kp,ki,kd, REVERSE);
 
 void wakeUpScreen(){
   screenTimer = SCREEN_SLEEP;
+  lcd.clear();
   lcd.backlight();
 }
 
@@ -77,26 +85,53 @@ void setup()
   myPID.SetMode(AUTOMATIC);
 }
 void displayData(){
-     if(screenTimer <= 0){
-    screenToSleep();
-   }else{
+  
+     if(displayMode == sleepMode){
+      screenToSleep();
+    }else if(displayMode == readMode){
+     lcd.print("Actual T:");
      lcd.print (String(sensedTemperature));
+     lcd.print((char)223);
      lcd.print ("C");
-     lcd.setCursor ( 0, 1 );
-     lcd.print ("T:");
-     lcd.print(String(setTemperature));
-     lcd.print("F:");
+     lcd.setCursor(0, 1);
+     lcd.print("Fan: ");
      lcd.print(String((fanSpeed / fanSpeedMax)*100));
-     
+     lcd.print("%");
+     lcd.print("  ");
+      }else{
+      lcd.print ("Set T:");
+     lcd.print(String(setTemperature));
+     lcd.print((char)223);
+     lcd.print ("C");
+     lcd.setCursor (0, 1);
+     lcd.print("Fan: ");
+     lcd.print(String((fanSpeed / fanSpeedMax)*100));
+     lcd.print("%");
+     lcd.print("  ");
+      
+      
    }
 }
 void processButtonInput (){
     if(digitalRead(WAKE_BUTTON) == HIGH){
+      if(!wakeButtonT){
       wakeUpScreen();
+      if(displayMode == sleepMode){
+        displayMode = setMode;
+      }else if(displayMode == readMode){
+        displayMode = setMode;
+      }else if(displayMode == setMode){
+        displayMode = readMode;
+      }
+      }
+      wakeButtonT = 1;
+    }else{
+      wakeButtonT = 0;
     }
     if(digitalRead(LOWER_TEMP_BUTTON) == HIGH){
       if(!lowerT || lowerT > 10){
         setTemperature -= 0.1;
+        displayMode = setMode;
         wakeUpScreen();
       }
     lowerT++;
@@ -106,6 +141,7 @@ void processButtonInput (){
    if(digitalRead(RAISE_TEMP_BUTTON) == HIGH){
       if(!raiseT || raiseT > 10){
         setTemperature += 0.1;
+        displayMode = setMode;
         wakeUpScreen();
       }
     raiseT++;
@@ -113,8 +149,12 @@ void processButtonInput (){
     raiseT = 0;
    }
 }
+
 void loop()
 {
+   if(screenTimer <= 0){
+    displayMode = sleepMode;
+   }
    sensedTemperature = pressureSensor.readTemperature();
    myPID.Compute();
    lcd.home ();
